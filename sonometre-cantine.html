@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f2937">
+<title>Niveau sonore de la cantine</title>
+<style>
+  :root{
+    --bg:#1f2937; --fg:#ffffff; --panel:#ffffff; --ink:#111827; --muted:#6b7280; --accent:#2563eb;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-user-select:none;user-select:none;touch-action:manipulation}
+  body{background:var(--bg);color:var(--fg);transition:background-color .6s ease,color .6s ease}
+  body.idle{--bg:#1f2937;--fg:#fff}
+  body.green{--bg:#15803d;--fg:#fff}
+  body.orange{--bg:#f59e0b;--fg:#1a1a1a}
+  body.red{--bg:#dc2626;--fg:#fff}
+
+  .app{height:100dvh;display:flex;flex-direction:column;padding:max(12px,env(safe-area-inset-top)) 16px max(14px,env(safe-area-inset-bottom))}
+  .top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:15px;min-height:36px}
+  .tag{background:rgba(0,0,0,.25);color:#fff;padding:5px 12px;border-radius:999px;font-weight:600}
+  body.orange .tag{background:rgba(0,0,0,.2);color:#1a1a1a}
+  .icon-btn{background:rgba(0,0,0,.25);color:inherit;border:0;border-radius:12px;padding:8px 14px;font-size:16px;font-weight:600}
+  body.orange .icon-btn{background:rgba(0,0,0,.15)}
+
+  .main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2vh;min-height:0}
+  .face{font-size:min(34vw,34vh);line-height:1}
+  .word{font-size:min(17vw,12vh);font-weight:900;letter-spacing:.04em;line-height:1}
+  .msg{font-size:min(6.4vw,4.6vh);font-weight:600;max-width:92vw;line-height:1.25}
+
+  .gauge{position:relative;height:22px;border-radius:11px;background:rgba(0,0,0,.28);margin:10px 4px 6px;overflow:visible}
+  .gauge .fill{position:absolute;left:0;top:0;bottom:0;border-radius:11px;background:#fff;width:0;transition:width .12s linear}
+  body.orange .gauge .fill{background:#1a1a1a}
+  .gauge .mark{position:absolute;top:-5px;bottom:-5px;width:4px;border-radius:2px;background:#fde68a}
+  .gauge .mark.r{background:#fecaca}
+  body.orange .gauge .mark{background:#78350f}
+  body.orange .gauge .mark.r{background:#7f1d1d}
+  .gauge-info{display:flex;justify-content:space-between;font-size:14px;opacity:.9;margin:0 4px 10px}
+
+  .actions{display:flex;gap:12px}
+  .btn{flex:1;border:0;border-radius:18px;font-size:22px;font-weight:800;padding:18px 10px;color:#fff;min-height:64px}
+  .btn.start{background:#2563eb}
+  .btn.stop{background:#374151}
+  .btn:disabled{opacity:.4}
+  body.orange .btn.stop{background:#1f2937}
+
+  /* Panneau réglages */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-end;justify-content:center;z-index:10}
+  .overlay.open{display:flex}
+  .sheet{background:var(--panel);color:var(--ink);width:100%;max-width:560px;max-height:92dvh;overflow:auto;
+    border-radius:22px 22px 0 0;padding:18px 18px max(22px,env(safe-area-inset-bottom));-webkit-user-select:text;user-select:text}
+  .sheet h2{margin:0 0 6px;font-size:22px}
+  .sheet h3{margin:20px 0 6px;font-size:17px}
+  .sheet p,.sheet li{font-size:15px;line-height:1.45;color:#374151}
+  .sheet .small{font-size:13px;color:var(--muted)}
+  .row{display:flex;align-items:center;gap:12px}
+  input[type=range]{width:100%;height:36px;accent-color:var(--accent)}
+  .sbtn{border:0;border-radius:14px;padding:14px 16px;font-size:16px;font-weight:700;background:var(--accent);color:#fff;width:100%;margin-top:8px}
+  .sbtn.alt{background:#e5e7eb;color:#111827}
+  .sbtn:disabled{opacity:.5}
+  .readout{background:#f3f4f6;border-radius:12px;padding:10px 12px;font-size:14px;color:#111827;margin-top:8px}
+  .warn{background:#fef3c7;border-radius:12px;padding:10px 12px;font-size:14px;color:#78350f;margin-top:10px}
+  details{margin-top:14px;background:#f9fafb;border-radius:12px;padding:10px 12px}
+  summary{font-weight:700;font-size:16px;color:#111827}
+  .close{float:right;background:#e5e7eb;border:0;border-radius:12px;padding:8px 14px;font-size:15px;font-weight:700}
+
+  /* Calibration */
+  .cal{position:fixed;inset:0;z-index:20;background:rgba(17,24,39,.94);color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;gap:16px}
+  .cal.open{display:flex}
+  .cal .count{font-size:30vw;font-weight:900;line-height:1}
+  .cal .t{font-size:24px;font-weight:700;max-width:520px}
+</style>
+</head>
+<body class="idle">
+<div class="app">
+  <div class="top">
+    <span class="tag" id="calTag">Non calibré</span>
+    <div style="display:flex;gap:8px">
+      <button class="icon-btn" id="fsBtn" aria-label="Plein écran">⛶</button>
+      <button class="icon-btn" id="setBtn">⚙ Réglages</button>
+    </div>
+  </div>
+
+  <div class="main" aria-live="polite">
+    <div class="face" id="face">🎤</div>
+    <div class="word" id="word">PRÊT</div>
+    <div class="msg" id="msg">Appuie sur Démarrer pour écouter la cantine.</div>
+  </div>
+
+  <div class="gauge" id="gauge" aria-hidden="true">
+    <div class="fill" id="fill"></div>
+    <div class="mark" id="mO"></div>
+    <div class="mark r" id="mR"></div>
+  </div>
+  <div class="gauge-info"><span>Calme</span><span id="rel">Indice relatif : –</span><span>Fort</span></div>
+
+  <div class="actions">
+    <button class="btn start" id="startBtn">▶ Démarrer</button>
+    <button class="btn stop" id="stopBtn" disabled>■ Arrêter</button>
+  </div>
+</div>
+
+<!-- Réglages -->
+<div class="overlay" id="overlay">
+  <div class="sheet" role="dialog" aria-label="Réglages">
+    <button class="close" id="closeBtn">Fermer</button>
+    <h2>Réglages</h2>
+
+    <h3>1. Seuil sonore</h3>
+    <p>Déplace le curseur pour rendre l'écran plus ou moins sensible.</p>
+    <div class="row"><span>＋ sensible</span>
+      <input type="range" id="offset" min="-10" max="10" step="1" value="0">
+      <span>＋ tolérant</span></div>
+    <div class="readout" id="thInfo"></div>
+
+    <h3>2. Calibration dans la cantine</h3>
+    <p>Quand l'ambiance est <b>normale et agréable</b> (les enfants mangent et discutent calmement), appuie sur le bouton : l'appli mesure pendant 10 secondes et prend ce niveau comme référence.</p>
+    <button class="sbtn" id="calBtn">Calibrer l'ambiance normale (10 s)</button>
+    <button class="sbtn alt" id="resetBtn">Revenir aux réglages par défaut</button>
+    <div class="warn" id="calWarn" style="display:none"></div>
+
+    <details open>
+      <summary>Ce que mesure (et ne mesure pas) cette appli</summary>
+      <ul>
+        <li>Elle <b>ne mesure pas de décibels SPL réels</b> (dB acoustiques). Un micro de téléphone n'est pas étalonné : la sensibilité varie d'un modèle à l'autre, et Android peut régler le gain automatiquement.</li>
+        <li>Elle mesure un <b>niveau relatif</b> : le niveau capté par le micro comparé à la référence que tu as calibrée. Les « dB » affichés sont des écarts <b>par rapport à cette référence</b>, pas des valeurs absolues.</li>
+        <li>Les résultats dépendent de la <b>position du téléphone</b> (distance, orientation, support, coque). Après tout déplacement, recalibre.</li>
+        <li>Les bruits proches du micro (voix d'un enfant tout près, chaises, plateaux) pèsent plus que le fond sonore de toute la salle. Place le téléphone au centre de la pièce ou à hauteur des enfants, hors de portée de main.</li>
+        <li>C'est un <b>outil pédagogique</b>, pas un instrument de mesure réglementaire (santé, sécurité au travail). Pour une mesure légale, utiliser un sonomètre certifié.</li>
+      </ul>
+    </details>
+
+    <details>
+      <summary>Vie privée</summary>
+      <p>Aucun compte, aucune publicité, aucun serveur. Le son est analysé en direct sur le téléphone : <b>rien n'est enregistré ni envoyé</b>. Seuls la référence de calibration et le réglage du seuil sont conservés dans le navigateur de ce téléphone.</p>
+    </details>
+  </div>
+</div>
+
+<!-- Calibration -->
+<div class="cal" id="cal">
+  <div class="t">Calibration en cours…<br><span style="font-weight:500;font-size:19px">Garde l'ambiance habituelle et agréable de la cantine.</span></div>
+  <div class="count" id="calCount">10</div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  /* ---------- Réglages ---------- */
+  const DEFAULTS = { ref: -40, offset: 0, calibrated: false };
+  const ORANGE_MARGIN = 3;   // dB au-dessus de la référence (avant réglage du seuil)
+  const RED_GAP = 6;         // dB entre orange et rouge
+  const HYST = 1.5;          // dB d'hystérésis pour redescendre
+  const UP_DELAY = 600;      // ms avant de monter d'un niveau
+  const DOWN_DELAY = 2500;   // ms avant de redescendre (évite le clignotement)
+  const TICK = 100;          // ms entre deux mesures
+
+  let cfg = loadCfg();
+  function loadCfg() {
+    try {
+      const s = JSON.parse(localStorage.getItem('cantine-sonore') || 'null');
+      if (s && typeof s.ref === 'number' && typeof s.offset === 'number') return Object.assign({}, DEFAULTS, s);
+    } catch (e) {}
+    return Object.assign({}, DEFAULTS);
+  }
+  function saveCfg() { try { localStorage.setItem('cantine-sonore', JSON.stringify(cfg)); } catch (e) {} }
+  const thresholds = () => { const o = cfg.ref + ORANGE_MARGIN + cfg.offset; return { o, r: o + RED_GAP }; };
+
+  /* ---------- État ---------- */
+  const S = { running:false, ctx:null, stream:null, analyser:null, buf:null, timer:null, wake:null,
+              smooth:null, level:-120, cur:'idle', cand:null, candSince:0, calibrating:false, calPow:[] };
+  const RANK = { green:0, orange:1, red:2 };
+
+  const UI = {
+    idle:   { face:'🎤', word:'PRÊT',   msg:'Appuie sur Démarrer pour écouter la cantine.' },
+    green:  { face:'🙂', word:'VERT',   msg:'Le bruit est correct : on peut discuter calmement.' },
+    orange: { face:'😐', word:'ORANGE', msg:'Le bruit augmente : on baisse un peu la voix.' },
+    red:    { face:'😣', word:'ROUGE',  msg:'Trop fort ! On retrouve un volume agréable.' }
+  };
+  function setState(name) {
+    S.cur = name;
+    document.body.className = name;
+    $('face').textContent = UI[name].face;
+    $('word').textContent = UI[name].word;
+    $('msg').textContent = UI[name].msg;
+  }
+
+  /* ---------- Micro ---------- */
+  async function start() {
+    if (S.running) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+      alert("Le micro n'est pas accessible ici. La page doit être ouverte en HTTPS (ou depuis localhost). Voir les instructions.");
+      return;
+    }
+    try {
+      S.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1 }
+      });
+    } catch (e) {
+      $('msg').textContent = "Micro refusé. Autorise le micro pour ce site dans les réglages de Chrome, puis recommence.";
+      return;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    S.ctx = new AC();
+    await S.ctx.resume();
+    const src = S.ctx.createMediaStreamSource(S.stream);
+    const hp = S.ctx.createBiquadFilter();           // coupe les grondements / manipulations (<100 Hz)
+    hp.type = 'highpass'; hp.frequency.value = 100;
+    S.analyser = S.ctx.createAnalyser();
+    S.analyser.fftSize = 2048;
+    S.buf = new Float32Array(S.analyser.fftSize);
+    src.connect(hp); hp.connect(S.analyser);
+
+    S.running = true; S.smooth = null; S.cand = null;
+    $('startBtn').disabled = true; $('stopBtn').disabled = false;
+    setState('green');
+    await requestWake();
+    S.timer = setInterval(tick, TICK);
+    updateReadouts();
+  }
+
+  function stop() {
+    S.running = false;
+    clearInterval(S.timer); S.timer = null;
+    if (S.stream) S.stream.getTracks().forEach(t => t.stop());
+    if (S.ctx) S.ctx.close().catch(() => {});
+    S.stream = S.ctx = S.analyser = null;
+    releaseWake();
+    $('startBtn').disabled = false; $('stopBtn').disabled = true;
+    $('fill').style.width = '0%'; $('rel').textContent = 'Indice relatif : –';
+    setState('idle');
+  }
+
+  /* ---------- Écran toujours allumé ---------- */
+  async function requestWake() {
+    try { if ('wakeLock' in navigator) { S.wake = await navigator.wakeLock.request('screen'); } } catch (e) {}
+  }
+  function releaseWake() { try { if (S.wake) S.wake.release(); } catch (e) {} S.wake = null; }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.running) requestWake(); });
+
+  /* ---------- Mesure ---------- */
+  function tick() {
+    if (!S.analyser) return;
+    S.analyser.getFloatTimeDomainData(S.buf);
+    let sum = 0;
+    for (let i = 0; i < S.buf.length; i++) sum += S.buf[i] * S.buf[i];
+    const p = sum / S.buf.length;                    // puissance moyenne (RMS²)
+
+    if (S.calibrating) S.calPow.push(p);
+
+    // lissage : montée rapide, descente lente
+    const prev = S.smooth === null ? p : S.smooth;
+    const a = p > prev ? 0.5 : 0.12;
+    S.smooth = a * p + (1 - a) * prev;
+    S.level = 10 * Math.log10(Math.max(S.smooth, 1e-12));   // dB relatifs à la pleine échelle numérique (dBFS)
+
+    decide(S.level);
+    draw(S.level);
+  }
+
+  function target(l) {
+    const { o, r } = thresholds();
+    const c = S.cur;
+    if (l >= r) return 'red';
+    if (c === 'red' && l >= r - HYST) return 'red';
+    if (l >= o) return 'orange';
+    if ((c === 'orange' || c === 'red') && l >= o - HYST) return 'orange';
+    return 'green';
+  }
+
+  function decide(l) {
+    const t = target(l), now = performance.now();
+    if (t === S.cur || S.cur === 'idle') { S.cand = null; return; }
+    if (S.cand !== t) { S.cand = t; S.candSince = now; return; }
+    const delay = RANK[t] > RANK[S.cur] ? UP_DELAY : DOWN_DELAY;
+    if (now - S.candSince >= delay) { setState(t); S.cand = null; }
+  }
+
+  // Jauge : de (référence − 15 dB) à (référence + 25 dB)
+  const G_MIN = -15, G_MAX = 25;
+  const pct = db => Math.max(0, Math.min(100, ((db - cfg.ref - G_MIN) / (G_MAX - G_MIN)) * 100));
+  function draw(l) {
+    $('fill').style.width = pct(l) + '%';
+    const d = l - cfg.ref;
+    $('rel').textContent = 'Indice relatif : ' + (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(0) + ' dB';
+  }
+  function updateReadouts() {
+    const { o, r } = thresholds();
+    $('mO').style.left = pct(o) + '%';
+    $('mR').style.left = pct(r) + '%';
+    const so = o - cfg.ref, sr = r - cfg.ref;
+    const f = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + ' dB';
+    $('thInfo').textContent = 'Orange à partir de ' + f(so) + ', rouge à partir de ' + f(sr) + ' par rapport à la référence (valeurs relatives, pas des dB SPL).';
+    $('calTag').textContent = cfg.calibrated ? 'Calibré ✓' : 'Non calibré';
+    $('offset').value = cfg.offset;
+  }
+
+  /* ---------- Calibration ---------- */
+  async function calibrate() {
+    $('overlay').classList.remove('open');
+    if (!S.running) { await start(); if (!S.running) return; }
+    S.calPow = []; S.calibrating = true;
+    $('cal').classList.add('open');
+    let n = 10; $('calCount').textContent = n;
+    const iv = setInterval(() => {
+      n--; $('calCount').textContent = Math.max(n, 0);
+      if (n <= 0) {
+        clearInterval(iv);
+        S.calibrating = false;
+        $('cal').classList.remove('open');
+        finishCal();
+      }
+    }, 1000);
+  }
+  function finishCal() {
+    if (S.calPow.length < 20) return;
+    const mean = S.calPow.reduce((a, b) => a + b, 0) / S.calPow.length;
+    const db = 10 * Math.log10(Math.max(mean, 1e-12));
+    const warn = $('calWarn');
+    if (db < -80) {
+      warn.style.display = 'block';
+      warn.textContent = "Le niveau mesuré est extrêmement faible : le micro est peut-être bouché, coupé, ou la pièce trop silencieuse. Calibration non enregistrée.";
+      $('overlay').classList.add('open');
+      return;
+    }
+    cfg.ref = db; cfg.calibrated = true; cfg.offset = 0; saveCfg();
+    S.cand = null; setState('green');
+    warn.style.display = 'block';
+    warn.textContent = 'Calibration enregistrée. Si tu déplaces le téléphone, recalibre.';
+    updateReadouts();
+  }
+
+  /* ---------- Événements ---------- */
+  $('startBtn').addEventListener('click', start);
+  $('stopBtn').addEventListener('click', stop);
+  $('setBtn').addEventListener('click', () => { updateReadouts(); $('overlay').classList.add('open'); });
+  $('closeBtn').addEventListener('click', () => $('overlay').classList.remove('open'));
+  $('overlay').addEventListener('click', e => { if (e.target === $('overlay')) $('overlay').classList.remove('open'); });
+  $('offset').addEventListener('input', e => { cfg.offset = Number(e.target.value); saveCfg(); updateReadouts(); });
+  $('calBtn').addEventListener('click', calibrate);
+  $('resetBtn').addEventListener('click', () => {
+    cfg = Object.assign({}, DEFAULTS); saveCfg(); $('calWarn').style.display = 'none'; updateReadouts();
+  });
+  $('fsBtn').addEventListener('click', () => {
+    const el = document.documentElement;
+    if (!document.fullscreenElement) { (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el); }
+    else { (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document); }
+  });
+
+  updateReadouts();
+})();
+</script>
+</body>
+</html>
